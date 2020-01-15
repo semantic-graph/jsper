@@ -1,0 +1,2 @@
+all:
+	tsc main.ts
