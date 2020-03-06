@@ -39,4 +39,10 @@ esprima.parseScript(source, {}, (node, _) => {
     }
 });
 
-fs.writeFileSync(inputPath + ".js2graph.json", JSON.stringify({nodes: nodes, edges: edges}));
+fs.writeFileSync(inputPath + ".js2graph.json", JSON.stringify({
+    nodes: nodes,
+    edges: edges,
+    meta: {
+        "input": inputPath
+    }
+}));
