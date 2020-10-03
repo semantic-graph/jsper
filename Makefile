@@ -1,2 +1,2 @@
-all:
-	tsc main.ts
+test:
+	./jsper tests/example.js	

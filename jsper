@@ -5,5 +5,5 @@ fi
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 JS=$(realpath $1)
 cd $DIR
-tsc main.ts
+tsc main.ts -out main.js
 node main.js $JS
