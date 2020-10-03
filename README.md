@@ -1,4 +1,4 @@
-# Simple JS analysis tool based on Esprima
+# `jsper`
 
 ```
 npm install
