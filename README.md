@@ -3,7 +3,7 @@
 ```
 npm install
 npm install -g typescript
-npm run tsc
+make test
 ```
 
 ## Bootstrap
