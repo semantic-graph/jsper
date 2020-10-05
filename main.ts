@@ -20,23 +20,26 @@ let loadedFuncs = new Map();
 let rewrites: { from: string, to: string }[] = [];
 
 function getFragment(node: ESTree.Node) {
-    let startLoc = node.loc.start
-    let endLoc = node.loc.end
-    var fragment = "";
-    if (startLoc.line != endLoc.line) {
-        fragment += sourceLines[startLoc.line - 1].slice(startLoc.column) + "\n";
-        for (let line of sourceLines.slice(startLoc.line, endLoc.line - 1)) {
-            fragment += line + "\n";
+    if (node.loc) {
+        let startLoc = node.loc.start;
+        let endLoc = node.loc.end;
+        var fragment = "";
+        if (startLoc.line != endLoc.line) {
+            fragment += sourceLines[startLoc.line - 1].slice(startLoc.column) + "\n";
+            for (let line of sourceLines.slice(startLoc.line, endLoc.line - 1)) {
+                fragment += line + "\n";
+            }
+            fragment += sourceLines[endLoc.line - 1].slice(0, endLoc.column);
+        } else {
+            fragment += sourceLines[startLoc.line - 1].slice(startLoc.column, endLoc.column);
         }
-        fragment += sourceLines[endLoc.line - 1].slice(0, endLoc.column);
-    } else {
-        fragment += sourceLines[startLoc.line - 1].slice(startLoc.column, endLoc.column);
+        return fragment;
     }
-    return fragment;
+    throw new Error("node has no loc.")
 }
 
 esprima.parseScript(source, {loc: true}, (node, _) => {
-    if (node.type === 'FunctionDeclaration') {
+    if (node.type === 'FunctionDeclaration' && node.id) {
         let fragment = getFragment(node);
         console.log("---- Loading " + node.id.name + " -----\n" + fragment);
         vm.run(fragment);

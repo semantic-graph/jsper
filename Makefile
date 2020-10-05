@@ -1,2 +1,2 @@
 test:
-	./jsper tests/example.js	
+	./jsper tests/example.js
