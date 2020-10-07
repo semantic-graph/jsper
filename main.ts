@@ -29,6 +29,30 @@ function getFragment(sourceLines: string[], node: ESTree.Node) {
     throw new Error("node has no loc.")
 }
 
+/**
+ * for node @callee.[property](...) --> match @callee
+ */
+function calleeObjectProperty(node: ESTree.Node, property: string) {
+    if (node.type == "CallExpression" && node.callee.type == "MemberExpression") {
+        if (node.callee.property.type == "Identifier" && node.callee.property.name == property) {
+            return node.callee.object;
+        }
+    }
+    return null;
+}
+
+/**
+ * for @node identifierName.*(...) --> match @node
+ */
+function callIdentifierName(node: ESTree.Node, identifierName: string) {
+    if (node.type == "CallExpression" && node.callee.type == "MemberExpression") {
+        if (node.callee.object.type == "Identifier" && node.callee.object.name == identifierName) {
+            return node;
+        }
+    }
+    return null;
+}
+
 function rewriteOnce(source: string) {
     let sourceLines = source.split("\n");
 
@@ -64,12 +88,29 @@ function rewriteOnce(source: string) {
 
     esprima.parseScript(source, {loc: true}, (node, _) => {
         if (node.type === 'CallExpression') {
-            switch (node.callee.type) {
-                case "Identifier":
-                    if (loadedDefs.has(node.callee.name)) {
-                        evalRewriteNode(node);
+            if (node.callee.type == "Identifier") {
+                if (loadedDefs.has(node.callee.name)) {
+                    evalRewriteNode(node);
+                }
+            }
+        }
+        // Unfold built-in function call
+        // node: Buffer.X("...").toString
+        let toStringOfObject = calleeObjectProperty(node, "toString");
+        if (toStringOfObject) {
+            let call = callIdentifierName(toStringOfObject, "Buffer");
+            if (call) {
+                if (call.arguments.every((argNode, _index, _array) => {
+                    if (argNode.type == "Literal") {
+                        return true;
                     }
-                    break;
+                    if (argNode.type == "Identifier" && loadedDefs.has(argNode.name)) {
+                        return true;
+                    }
+                    return false;
+                })) {
+                    evalRewriteNode(node);
+                }
             }
         }
         if (node.type === 'MemberExpression') {
@@ -86,14 +127,15 @@ function rewriteOnce(source: string) {
                 node.right.type === "Literal") {
                 evalRewriteNode(node, false);
             }
-            if (node.left.type === "BinaryExpression" &&
-                node.left.right.type === "Literal" &&
+            let nodeL = node.left;
+            if (nodeL.type === "BinaryExpression" &&
+                nodeL.right.type === "Literal" &&
                 node.right.type === "Literal" &&
-                node.left.operator === "+" &&
+                nodeL.operator === "+" &&
                 node.operator === "+") {
                 let nodeFragment = getFragment(sourceLines, node);
-                let nodeLLFragment = getFragment(sourceLines, node.left.left);
-                let nodeLRFragment = getFragment(sourceLines, node.left.right);
+                let nodeLLFragment = getFragment(sourceLines, nodeL.left);
+                let nodeLRFragment = getFragment(sourceLines, nodeL.right);
                 let nodeRFragment = getFragment(sourceLines, node.right);
                 var fragmentToRun ="return " + nodeLRFragment + "+" + nodeRFragment;
                 // console.log("---- Running Fragment ----\n" + fragmentToRun);
@@ -122,13 +164,26 @@ let inputPath = process.argv[2];
 var source = fs.readFileSync(inputPath, 'utf8')
 
 let sourceLines = source.split("\n");
+
+function loadAssign(lhs: ESTree.Pattern, rhs: ESTree.Expression, node: ESTree.Node) {
+    if (rhs.type === 'Literal' && lhs.type === "Identifier") {
+        // console.log("---- Loading assignment to literal " + node.left.name + " -----\n" + fragment);
+        assert(!loadedDefs.has(lhs.name));
+        let fragment = getFragment(sourceLines, node);
+        loadedDefs.set(lhs.name, fragment);
+    }
+}
+
 esprima.parseScript(source, {loc: true}, (node, _) => {
     if (node.type === 'AssignmentExpression') {
-        let fragment = getFragment(sourceLines, node);
-        if (node.right.type === 'Literal' && node.left.type === "Identifier") {
-            // console.log("---- Loading assignment to literal " + node.left.name + " -----\n" + fragment);
-            assert(!loadedDefs.has(node.left.name));
-            loadedDefs.set(node.left.name, fragment);
+        loadAssign(node.left, node.right, node);
+    }
+    // TODO: node.declarations.length > 1
+    if (node.type === "VariableDeclaration" && node.declarations.length == 1) {
+        let lhs = node.declarations[0].id
+        let rhs = node.declarations[0].init
+        if (rhs) {
+            loadAssign(lhs, rhs, node);
         }
     }
     if (node.type === 'FunctionDeclaration' && node.id) {
